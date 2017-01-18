@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestApp", "TestApp\TestApp.csproj", "{37EE628D-2409-4A0E-99D4-477733E316CF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExpressionMouse", "ExpressionMouse\ExpressionMouse.csproj", "{6E7F533D-F149-42C1-B8BC-44F674EACB35}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{37EE628D-2409-4A0E-99D4-477733E316CF}.Debug|x86.ActiveCfg = Debug|x86
+		{37EE628D-2409-4A0E-99D4-477733E316CF}.Debug|x86.Build.0 = Debug|x86
+		{37EE628D-2409-4A0E-99D4-477733E316CF}.Release|x86.ActiveCfg = Release|x86
+		{37EE628D-2409-4A0E-99D4-477733E316CF}.Release|x86.Build.0 = Release|x86
+		{6E7F533D-F149-42C1-B8BC-44F674EACB35}.Debug|x86.ActiveCfg = Debug|x86
+		{6E7F533D-F149-42C1-B8BC-44F674EACB35}.Debug|x86.Build.0 = Debug|x86
+		{6E7F533D-F149-42C1-B8BC-44F674EACB35}.Release|x86.ActiveCfg = Release|x86
+		{6E7F533D-F149-42C1-B8BC-44F674EACB35}.Release|x86.Build.0 = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

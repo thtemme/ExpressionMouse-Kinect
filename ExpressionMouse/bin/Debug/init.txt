@@ -1,0 +1,3 @@
+23.05.2014 14:43:59 - Error during Kinect initialization.
+23.05.2014 14:45:07 - Kinect sensor initialized successfully.
+17.01.2017 22:44:39 - Error during Kinect initialization.

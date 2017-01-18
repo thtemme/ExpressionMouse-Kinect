@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Settings xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ClickDelay>20</ClickDelay>
+  <HeadrotationSmoothingFilterValues>64, 55, 45, 35, 25, 20, 15, 10, 8, 7, 6, 5, 4, 3, 2, 1</HeadrotationSmoothingFilterValues>
+  <PercentageHorizontalEdgePixels>68</PercentageHorizontalEdgePixels>
+  <UsedFramesForClosedEyeDetection>10</UsedFramesForClosedEyeDetection>
+  <EyeClosedFilterThreshold>0.5</EyeClosedFilterThreshold>
+  <DoubleClickSecondEyeThreshold>0.18</DoubleClickSecondEyeThreshold>
+  <BrowRaiserStartThreshold>0.5</BrowRaiserStartThreshold>
+  <BrowLowererStartthreshold>0.16</BrowLowererStartthreshold>
+  <MouthOpenStartThreshold>0.75</MouthOpenStartThreshold>
+  <MouthOpenConfirmation>0.5</MouthOpenConfirmation>
+  <MouthOpenEndThreshold>0.25</MouthOpenEndThreshold>
+  <ScrollMultiplierUp>150</ScrollMultiplierUp>
+  <ScrollMultiplierDown>250</ScrollMultiplierDown>
+  <HeadToScreenRelationX>35</HeadToScreenRelationX>
+  <HeadToScreenRelationY>25</HeadToScreenRelationY>
+</Settings>
