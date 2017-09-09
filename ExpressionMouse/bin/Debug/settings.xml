@@ -11,7 +11,7 @@
   <MouthOpenStartThreshold>0.75</MouthOpenStartThreshold>
   <MouthOpenConfirmation>0.5</MouthOpenConfirmation>
   <MouthOpenEndThreshold>0.25</MouthOpenEndThreshold>
-  <ScrollMultiplierUp>150</ScrollMultiplierUp>
+  <ScrollMultiplierUp>160</ScrollMultiplierUp>
   <ScrollMultiplierDown>250</ScrollMultiplierDown>
   <HeadToScreenRelationX>35</HeadToScreenRelationX>
   <HeadToScreenRelationY>25</HeadToScreenRelationY>
