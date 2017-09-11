@@ -10,6 +10,8 @@ using Microsoft.Kinect;
 using Microsoft.Kinect.Toolkit.FaceTracking;
 using System.Xml.Serialization;
 using System.Xml;
+using Microsoft.Speech.Recognition;
+using Microsoft.Speech.AudioFormat;
 
 namespace ExpressionMouse
 {
@@ -30,14 +32,20 @@ namespace ExpressionMouse
         private short[] depthImage;
         List<int> gaussFilter = new List<int>();
         private DepthImageFormat depthImageFormat = DepthImageFormat.Undefined;
+        private SpeechRecognitionEngine speechRecognitionEngine;
         public Skeleton[] SkeletonData { get; set; }
         private List<bool> rightEyeClosedHistory = new List<bool>();
         private List<bool> leftEyeClosedHistory = new List<bool>();
         private List<Vector3DF> headRotationHistory = new List<Vector3DF>();
         double gaussFactor = 0;
         int clickDelay = 100;
+        private bool useSpeach = false;
+        private StatusEnum status = StatusEnum.Initializing;
+        private DateTime lastFramesReady;
         #endregion
 
+        #region
+        #endregion
 
         public ExpressionMouse()
         {
@@ -82,7 +90,6 @@ namespace ExpressionMouse
 
         private void Init()
         {
-
             try
             {
                 string[] splitString = { ", " };
@@ -111,6 +118,7 @@ namespace ExpressionMouse
                 Kinect.DepthStream.Range = DepthRange.Near;
                 Kinect.SkeletonStream.TrackingMode = SkeletonTrackingMode.Seated;
                 File.AppendAllText("init.txt",DateTime.Now+" - Kinect sensor initialized successfully.\n");
+                useSpeach = InitSpeechRecognition();
             }
             catch (Exception e)
             {
@@ -119,12 +127,125 @@ namespace ExpressionMouse
             }
         }
 
+        private bool InitSpeechRecognition()
+        {
+            RecognizerInfo ri = GetKinetSpeechRecognizer();
+
+            if (null != ri)
+            {
+                this.speechRecognitionEngine = new SpeechRecognitionEngine(ri.Id);
+
+
+                var commands = new Choices();
+                commands.Add(new SemanticResultValue("Mouse Start", "MOUSE START"));
+                commands.Add(new SemanticResultValue("Mouse Off", "MOUSE OFF"));
+               
+                var gb = new GrammarBuilder { Culture = ri.Culture };
+                gb.Append(commands);
+                var g = new Grammar(gb);
+                speechRecognitionEngine.LoadGrammar(g);
+
+                speechRecognitionEngine.SpeechRecognized += SpeechRecognized;
+                speechRecognitionEngine.SpeechRecognitionRejected += SpeechRejected;
+
+                // For long recognition sessions (a few hours or more), it may be beneficial to turn off adaptation of the acoustic model. 
+                // This will prevent recognition accuracy from degrading over time.
+                ////speechEngine.UpdateRecognizerSetting("AdaptationOn", 0);
+
+                speechRecognitionEngine.SetInputToAudioStream(
+                Kinect.AudioSource.Start(), new SpeechAudioFormatInfo(EncodingFormat.Pcm, 16000, 16, 1, 32000, 2, null));
+                speechRecognitionEngine.RecognizeAsync(RecognizeMode.Multiple);
+                return true;
+            }
+            return false;
+        }
+
+        private void SpeechRejected(object sender, SpeechRecognitionRejectedEventArgs e)
+        {
+        }
+
+        private void SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
+        {
+            if (useSpeach)
+            {
+                // Speech utterance confidence below which we treat speech as if it hadn't been heard
+                const double ConfidenceThreshold = 0.3;
+                if (e.Result.Confidence >= ConfidenceThreshold)
+                {
+                    switch (e.Result.Semantics.Value.ToString())
+                    {
+                        case "MOUSE START":
+                            StartKinectControl();
+                            break;
+                        case "MOUSE OFF":
+                            StopKinectControl();
+                            break;
+
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the metadata for the speech recognizer (acoustic model) most suitable to
+        /// process audio from Kinect device.
+        /// </summary>
+        /// <returns>
+        /// RecognizerInfo if found, <code>null</code> otherwise.
+        /// </returns>
+        private static RecognizerInfo GetKinetSpeechRecognizer()
+        {
+            foreach (RecognizerInfo recognizer in SpeechRecognitionEngine.InstalledRecognizers())
+            {
+                string value;
+                recognizer.AdditionalInfo.TryGetValue("Kinect", out value);
+                if ("True".Equals(value, StringComparison.OrdinalIgnoreCase) && "en-US".Equals(recognizer.Culture.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return recognizer;
+                }
+            }
+            return null;
+        }
+
+        private void SwitchStatus(StatusEnum newStatus)
+        {
+            if (newStatus == StatusEnum.ReadyActivated)
+            {
+                lbStatus.Text = "Face control ACTIVE. \"MOUSE OFF\" will stop the mouse.";
+                this.btStart.BeginInvoke((MethodInvoker)(() => this.btStart.Enabled = false));
+                this.btStop.BeginInvoke((MethodInvoker)(() => this.btStop.Enabled = true));                
+                this.status = newStatus;
+            }
+            else if (newStatus == StatusEnum.ReadyDeactivated)
+            {
+                lbStatus.Text = "Kinect Ready. Say \"MOUSE START\"";
+                this.btStart.BeginInvoke((MethodInvoker)(() => this.btStart.Enabled = true));
+                this.btStop.BeginInvoke((MethodInvoker)(() => this.btStop.Enabled = false));
+            }
+            else if (newStatus == StatusEnum.UnreadyDeactivated)
+            {
+                lbStatus.Text = "Lost Skeleton or face... Trying to recognize person...";
+            }
+            else if (newStatus == StatusEnum.Initializing)
+                lbStatus.Text = "Initializing. Trying to recognize person...";
+            this.status = newStatus;
+        }
+
         private void btStart_Click(object sender, EventArgs e)
         {
+            StartKinectControl();
+        }
+
+        private void StartKinectControl()
+        {
+            if (this.status == StatusEnum.ReadyDeactivated)
+                SwitchStatus(StatusEnum.ReadyActivated);
+        }
+
+        private void InitializeKinect()
+        {
             Workerthread = new Thread(this.Init);
-            Workerthread.Start();
-            btStart.Enabled = false;
-            btStop.Enabled = true;
+            Workerthread.Start();            
         }
 
         private void SetPictures(Bitmap leftEye, Bitmap rightEye)
@@ -149,77 +270,80 @@ namespace ExpressionMouse
                 {
                     File.AppendAllText("mouseLog.txt", DateTime.Now + " - Color- depth or Skeletonframe is null. Aborting Frame.\n");
                     return;
-                }
-
-                // Check for image format changes.  The FaceTracker doesn't
-                // deal with that so we need to reset.
-                HandlePossibleImageFormatChanges(colorImageFrame, depthImageFrame);
-                WriteDataToMembers(colorImageFrame, depthImageFrame, skeletonFrame);                
-                Skeleton activeSkeleton = null;
-                activeSkeleton = (from skel in this.SkeletonData where skel.TrackingState == SkeletonTrackingState.Tracked select skel).FirstOrDefault();
-
-                if (activeSkeleton != null)
+                }       
+                else //if (status == StatusEnum.ReadyActivated || status == StatusEnum.Initializing || status == StatusEnum.UnreadyDeactivated)
                 {
-                    File.AppendAllText("mouseLog.txt", DateTime.Now + " - Skeleton is there. Trying to find face.\n");
-                    FaceTrackFrame currentFaceFrame = faceTracker.Track(ColorImageFormat.RgbResolution640x480Fps30, colorImage, depthImageFormat, depthImage, activeSkeleton);
-                    LogFaceDetection(currentFaceFrame);
+                    // Check for image format changes.  The FaceTracker doesn't
+                    // deal with that so we need to reset.
+                    HandlePossibleImageFormatChanges(colorImageFrame, depthImageFrame);
+                    WriteDataToMembers(colorImageFrame, depthImageFrame, skeletonFrame);
+                    Skeleton activeSkeleton = null;
+                    activeSkeleton = (from skel in this.SkeletonData where skel.TrackingState == SkeletonTrackingState.Tracked select skel).FirstOrDefault();
 
-                    //Get relevant Points for blink detection
-                    //Left eye
-                    int minX = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.AboveOneFourthLeftEyelid].X);
-                    int minY = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.AboveOneFourthLeftEyelid].Y);
-                    int maxX = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.BelowThreeFourthLeftEyelid].X);
-                    int maxY = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.BelowThreeFourthLeftEyelid].Y);
-                    Bitmap leftEye = EyeExtract(colorImageFrame, currentFaceFrame, minX, minY, maxX, maxY, false);                    
-
-                    //Right eye
-                    minX = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.AboveThreeFourthRightEyelid].X);
-                    minY = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.AboveThreeFourthRightEyelid].Y);
-                    maxX = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.OneFourthBottomRightEyelid].X);
-                    maxY = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.OneFourthBottomRightEyelid].Y);
-
-                    Bitmap rightEye = EyeExtract(colorImageFrame, currentFaceFrame, minX, minY, maxX, maxY, true);
-                    Bitmap leftEye2 = null;
-                    Bitmap rightEye2 = null;
-                    if (leftEye != null)
-                        leftEye2 = new Bitmap(leftEye);
-                    if (rightEye != null)
-                        rightEye2 = new Bitmap(rightEye);
-                    
-                    this.pbLeft.BeginInvoke((MethodInvoker)(() => this.pbLeft.Image = rightEye2));
-                    this.pbLeft.BeginInvoke((MethodInvoker)(() => this.pbRight.Image = leftEye2));
-                    
-                    //Wende Kantenfilter auf die beiden Augen an.
-                    if (rightEye != null && leftEye != null)
+                    if (activeSkeleton != null)
                     {
-                        Dictionary<string, int> angleCount;
-                        Bitmap edgePicRight = Convolution(ConvertGrey(rightEye), true, out angleCount);
-                        bool rightEyeClosed = IsEyeClosed(angleCount);
-                        Bitmap edgePicLeft = Convolution(ConvertGrey(leftEye), false, out angleCount);
-                        bool leftEyeClosed = IsEyeClosed(angleCount);
+                        File.AppendAllText("mouseLog.txt", DateTime.Now + " - Skeleton is there. Trying to find face.\n");
+                        FaceTrackFrame currentFaceFrame = faceTracker.Track(ColorImageFormat.RgbResolution640x480Fps30, colorImage, depthImageFormat, depthImage, activeSkeleton);
+                        LogFaceDetection(currentFaceFrame);
 
-                        if (rightEyeClosedHistory.Count > 100)
-                            rightEyeClosedHistory.RemoveAt(0);
-                        if (leftEyeClosedHistory.Count > 100)
-                            leftEyeClosedHistory.RemoveAt(0);
-                        leftEyeClosedHistory.Add(leftEyeClosed);
-                        rightEyeClosedHistory.Add(rightEyeClosed);
+                        //Get relevant Points for blink detection
+                        //Left eye
+                        int minX = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.AboveOneFourthLeftEyelid].X);
+                        int minY = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.AboveOneFourthLeftEyelid].Y);
+                        int maxX = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.BelowThreeFourthLeftEyelid].X);
+                        int maxY = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.BelowThreeFourthLeftEyelid].Y);
+                        Bitmap leftEye = EyeExtract(colorImageFrame, currentFaceFrame, minX, minY, maxX, maxY, false);
 
-                        //If Face is rotated, move Mouse
-                        MoveMouseAccordingToFaceRotation(currentFaceFrame);
+                        //Right eye
+                        minX = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.AboveThreeFourthRightEyelid].X);
+                        minY = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.AboveThreeFourthRightEyelid].Y);
+                        maxX = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.OneFourthBottomRightEyelid].X);
+                        maxY = (int)Math.Round(currentFaceFrame.GetProjected3DShape()[FeaturePoint.OneFourthBottomRightEyelid].Y);
+
+                        Bitmap rightEye = EyeExtract(colorImageFrame, currentFaceFrame, minX, minY, maxX, maxY, true);
+                        Bitmap leftEye2 = null;
+                        Bitmap rightEye2 = null;
+                        if (leftEye != null)
+                            leftEye2 = new Bitmap(leftEye);
+                        if (rightEye != null)
+                            rightEye2 = new Bitmap(rightEye);
+
+                        this.pbLeft.BeginInvoke((MethodInvoker)(() => this.pbLeft.Image = rightEye2));
+                        this.pbLeft.BeginInvoke((MethodInvoker)(() => this.pbRight.Image = leftEye2));
+
+                        //Wende Kantenfilter auf die beiden Augen an.
+                        if (rightEye != null && leftEye != null)
+                        {
+                            Dictionary<string, int> angleCount;
+                            Bitmap edgePicRight = Convolution(ConvertGrey(rightEye), true, out angleCount);
+                            bool rightEyeClosed = IsEyeClosed(angleCount);
+                            Bitmap edgePicLeft = Convolution(ConvertGrey(leftEye), false, out angleCount);
+                            bool leftEyeClosed = IsEyeClosed(angleCount);
+
+                            if (rightEyeClosedHistory.Count > 100)
+                                rightEyeClosedHistory.RemoveAt(0);
+                            if (leftEyeClosedHistory.Count > 100)
+                                leftEyeClosedHistory.RemoveAt(0);
+                            leftEyeClosedHistory.Add(leftEyeClosed);
+                            rightEyeClosedHistory.Add(rightEyeClosed);
+
+                            //If Face is rotated, move Mouse
+                            MoveMouseAccordingToFaceRotation(currentFaceFrame);
+                        }
+                        else
+                        {
+                            File.AppendAllText("mouseLog.txt", DateTime.Now + " - Face recognized but couldn't find eye in face.\n");
+                        }
+                        clickDelay++;
+
+                        headRotationHistory.Add(currentFaceFrame.Rotation);
+                        if (headRotationHistory.Count >= 100)
+                            headRotationHistory.RemoveAt(0);
                     }
                     else
                     {
-                        File.AppendAllText("mouseLog.txt", DateTime.Now + " - Face recognized but couldn't find eye in face.\n");
+                        File.AppendAllText("mouseLog.txt", DateTime.Now + " - Active Skeleton is null. Couldn't analyze frame.\n");
                     }
-                    clickDelay++;
-
-                    headRotationHistory.Add(currentFaceFrame.Rotation);
-                    if (headRotationHistory.Count >= 100)
-                        headRotationHistory.RemoveAt(0);                }
-                else
-                {
-                    File.AppendAllText("mouseLog.txt", DateTime.Now + " - Active Skeleton is null. Couldn't analyze frame.\n");
                 }
             }
             catch (Exception e)
@@ -239,6 +363,13 @@ namespace ExpressionMouse
             }
         }
 
+        private void SetReadyStatus()
+        {
+            status = StatusEnum.ReadyDeactivated;
+            lbStatus.Text = "Kinect ready. Say \"MOUSE START\"";
+            this.btStart.BeginInvoke((MethodInvoker)(() => this.btStart.Enabled = true));
+        }
+
         private static void LogFaceDetection(FaceTrackFrame currentFaceFrame)
         {
             if (currentFaceFrame.TrackSuccessful)
@@ -254,63 +385,74 @@ namespace ExpressionMouse
         private void MoveMouseAccordingToFaceRotation(FaceTrackFrame currentFaceFrame)
         {
             if (headRotationHistory.Count > gaussFilter.Count - 1 && leftEyeClosedHistory.Count > nudConvolutionFilterLength.Value && currentFaceFrame.TrackSuccessful)
-            {                
-                float browRaiserValue = currentFaceFrame.GetAnimationUnitCoefficients()[AnimationUnit.BrowRaiser];
-                float browLowererValue = currentFaceFrame.GetAnimationUnitCoefficients()[AnimationUnit.BrowLower];
-                float mouthOpenValue = currentFaceFrame.GetAnimationUnitCoefficients()[AnimationUnit.JawLower];
-                if (browRaiserHistory.Count >= 100)
+            {
+                lastFramesReady = DateTime.Now;
+                if (status == StatusEnum.Initializing)
+                    SetReadyStatus();
+                else
                 {
-                    browRaiserHistory.RemoveAt(0);
-                    browLowererHistory.RemoveAt(0);
-                    mouthOpenHistory.RemoveAt(0);
-                }
-                browLowererHistory.Add(browLowererValue);
-                browRaiserHistory.Add(browRaiserValue);
-                mouthOpenHistory.Add(mouthOpenValue);
-
-                //Method 1: Without Smoothing                            
-                //System.Drawing.Point smoothedXY = ScaleXY(currentFaceFrame.Rotation);                                            
-               
-                //Method 2: Gaussian Smoothing
-                System.Drawing.Point smoothedXY = CalculateGaussianSmoothedXYPosition(currentFaceFrame);
-
-                //Check for right, left or Double Click
-                //1. Check if there was already a click 20 Frames ago, or if Drag & Drop is active
-                if (clickDelay > nudClickDelay.Value && !DragnDropActive)
-                {
-                    //2. If not, calculate mean values of dy's last 16 Frames
-                    if (HandleMouseClickActions())
-                        clickDelay = 0;
-                    else
+                    if (status == StatusEnum.UnreadyDeactivated)
+                        SwitchStatus(StatusEnum.ReadyActivated);
+                    else if (status == StatusEnum.ReadyActivated)
                     {
-                        //check for open Mouth
-                        if (mouthOpenValue > (float)nudMouthOpenStartThreshold.Value && mouthOpenHistory[mouthOpenHistory.Count - 2] > (float)nudMouthOpenConfirmation.Value && mouthOpenHistory[mouthOpenHistory.Count - 3] > (float)nudMouthOpenConfirmation.Value && mouthOpenHistory[mouthOpenHistory.Count - 4] > (float)nudMouthOpenConfirmation.Value)
+                        float browRaiserValue = currentFaceFrame.GetAnimationUnitCoefficients()[AnimationUnit.BrowRaiser];
+                        float browLowererValue = currentFaceFrame.GetAnimationUnitCoefficients()[AnimationUnit.BrowLower];
+                        float mouthOpenValue = currentFaceFrame.GetAnimationUnitCoefficients()[AnimationUnit.JawLower];
+                        if (browRaiserHistory.Count >= 100)
                         {
-                            MouseControl.Move(mousePositionHistory[mousePositionHistory.Count - 4].X, mousePositionHistory[mousePositionHistory.Count - 4].Y);
-                            this.lbAction.Invoke((MethodInvoker)(() => this.lbAction.Items.Add("Left Mouse Down on X: " + mousePositionHistory[mousePositionHistory.Count - 4].X + " Y: " + mousePositionHistory[mousePositionHistory.Count - 4].Y)));
-                            //lbAction.Items.Add("Left Mouse Down on X: " + mousePositionHistory[mousePositionHistory.Count - 4].X + " Y: " + mousePositionHistory[mousePositionHistory.Count - 4].Y);
-                            MouseControl.MouseDownLeft();
-                            DragnDropActive = true;
-                            clickDelay = 0;
+                            browRaiserHistory.RemoveAt(0);
+                            browLowererHistory.RemoveAt(0);
+                            mouthOpenHistory.RemoveAt(0);
                         }
+                        browLowererHistory.Add(browLowererValue);
+                        browRaiserHistory.Add(browRaiserValue);
+                        mouthOpenHistory.Add(mouthOpenValue);
+
+                        //Method 1: Without Smoothing                            
+                        //System.Drawing.Point smoothedXY = ScaleXY(currentFaceFrame.Rotation);                                            
+
+                        //Method 2: Gaussian Smoothing
+                        System.Drawing.Point smoothedXY = CalculateGaussianSmoothedXYPosition(currentFaceFrame);
+
+                        //Check for right, left or Double Click
+                        //1. Check if there was already a click 20 Frames ago, or if Drag & Drop is active
+                        if (clickDelay > nudClickDelay.Value && !DragnDropActive)
+                        {
+                            //2. If not, calculate mean values of dy's last 16 Frames
+                            if (HandleMouseClickActions())
+                                clickDelay = 0;
+                            else
+                            {
+                                //check for open Mouth
+                                if (mouthOpenValue > (float)nudMouthOpenStartThreshold.Value && mouthOpenHistory[mouthOpenHistory.Count - 2] > (float)nudMouthOpenConfirmation.Value && mouthOpenHistory[mouthOpenHistory.Count - 3] > (float)nudMouthOpenConfirmation.Value && mouthOpenHistory[mouthOpenHistory.Count - 4] > (float)nudMouthOpenConfirmation.Value)
+                                {
+                                    MouseControl.Move(mousePositionHistory[mousePositionHistory.Count - 4].X, mousePositionHistory[mousePositionHistory.Count - 4].Y);
+                                    this.lbAction.Invoke((MethodInvoker)(() => this.lbAction.Items.Add("Left Mouse Down on X: " + mousePositionHistory[mousePositionHistory.Count - 4].X + " Y: " + mousePositionHistory[mousePositionHistory.Count - 4].Y)));
+                                    //lbAction.Items.Add("Left Mouse Down on X: " + mousePositionHistory[mousePositionHistory.Count - 4].X + " Y: " + mousePositionHistory[mousePositionHistory.Count - 4].Y);
+                                    MouseControl.MouseDownLeft();
+                                    DragnDropActive = true;
+                                    clickDelay = 0;
+                                }
+                            }
+                        }
+                        else if (DragnDropActive)
+                        {
+                            if (mouthOpenValue < (float)nudMouthOpenEndThreshold.Value)
+                            {
+                                this.lbAction.Invoke((MethodInvoker)(() => this.lbAction.Items.Add("Left Mouse Up on X: " + smoothedXY.X + " Y: " + smoothedXY.Y)));
+                                MouseControl.MouseUpLeft();
+                                DragnDropActive = false;
+                                clickDelay = 0;
+                            }
+                        }
+                        MouseControl.Move(smoothedXY.X, smoothedXY.Y);
+                        HandleScrolling(browRaiserValue, browLowererValue);
+                        if (mousePositionHistory.Count > 100)
+                            mousePositionHistory.RemoveAt(0);
+                        mousePositionHistory.Add(new Microsoft.Kinect.Toolkit.FaceTracking.Point(smoothedXY.X, smoothedXY.Y));
+                        File.AppendAllText("mouseLog.txt", DateTime.Now + " - Face and eyes successfully tracked.\n");
                     }
                 }
-                else if (DragnDropActive)
-                {
-                    if (mouthOpenValue < (float)nudMouthOpenEndThreshold.Value)
-                    {
-                        this.lbAction.Invoke((MethodInvoker)(() => this.lbAction.Items.Add("Left Mouse Up on X: " + smoothedXY.X + " Y: " + smoothedXY.Y)));
-                        MouseControl.MouseUpLeft();
-                        DragnDropActive = false;
-                        clickDelay = 0;
-                    }
-                }
-                MouseControl.Move(smoothedXY.X, smoothedXY.Y);
-                HandleScrolling(browRaiserValue, browLowererValue);
-                if (mousePositionHistory.Count > 100)
-                    mousePositionHistory.RemoveAt(0);
-                mousePositionHistory.Add(new Microsoft.Kinect.Toolkit.FaceTracking.Point(smoothedXY.X, smoothedXY.Y));
-                File.AppendAllText("mouseLog.txt", DateTime.Now + " - Face and eyes successfully tracked.\n");
             }
         }
 
@@ -551,15 +693,11 @@ namespace ExpressionMouse
         private int ConvertXYToOneDimensionalCoordinate(int x, int y, int width)
         {
             return ((y - 1) * width * 4 + x * 4);
-        }
-
-        private void label16_Click(object sender, EventArgs e)
-        {
-
-        }
+        }        
 
         private void FaceMouseConfig_Load(object sender, EventArgs e)
         {
+            InitializeKinect();
         }
 
         public System.Drawing.Point ScaleXY(Vector3DF rotation)
@@ -631,17 +769,17 @@ namespace ExpressionMouse
         }
 
         private void btStop_Click(object sender, EventArgs e)
-        {            
-            if (Kinect != null)
-            {
-                Kinect.AllFramesReady -= this.OnAllFramesReady;
-                Kinect.DepthStream.Disable();
-                Kinect.ColorStream.Disable();
-                Kinect.SkeletonStream.Disable();
-                btStop.Enabled = false;
-                btStart.Enabled = true;                
-                Kinect.Stop();
-            }    
+        {
+            StopKinectControl();
+        }
+
+        private void StopKinectControl()
+        {
+            this.btStop.BeginInvoke((MethodInvoker)(() => this.btStop.Enabled = false));
+            if (this.status == StatusEnum.ReadyActivated)
+                SwitchStatus(StatusEnum.ReadyDeactivated);
+            else if (this.status == StatusEnum.UnreadyDeactivated)
+                SwitchStatus(StatusEnum.Initializing);
         }
 
         private void btReset_Click(object sender, EventArgs e)
@@ -665,6 +803,30 @@ namespace ExpressionMouse
 
         private void FaceMouseConfig_FormClosing(object sender, FormClosingEventArgs e)
         {
+            if (Kinect != null)
+            {
+                Kinect.AllFramesReady -= this.OnAllFramesReady;
+                Kinect.DepthStream.Disable();
+                Kinect.ColorStream.Disable();
+                Kinect.SkeletonStream.Disable();
+                btStop.Enabled = false;
+                btStart.Enabled = true;
+                Kinect.Stop();
+                if (useSpeach)
+                {
+                    Kinect.AudioSource.Stop();
+                }
+                Kinect = null;
+            }
+
+            
+
+            if (useSpeach && null != this.speechRecognitionEngine)
+            {
+                this.speechRecognitionEngine.SpeechRecognized -= SpeechRecognized;
+                this.speechRecognitionEngine.SpeechRecognitionRejected -= SpeechRejected;
+                this.speechRecognitionEngine.RecognizeAsyncStop();
+            }
             try
             {
                 //Save Values to Settings Object
@@ -703,6 +865,17 @@ namespace ExpressionMouse
         private void ttClickDelay_Popup(object sender, PopupEventArgs e)
         {
 
+        }
+
+        private void tiCheckStatus_Tick(object sender, EventArgs e)
+        {
+            if (DateTime.Now - lastFramesReady > TimeSpan.FromSeconds(5))
+            {
+                if (status == StatusEnum.ReadyActivated)
+                    this.SwitchStatus(StatusEnum.UnreadyDeactivated);
+                else if (status == StatusEnum.ReadyDeactivated)
+                    this.SwitchStatus(StatusEnum.Initializing);
+            }
         }
     }
 }

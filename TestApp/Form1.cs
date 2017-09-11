@@ -42,12 +42,6 @@ namespace TestApp
 
         public void StartKinectST()
         {
-            //Berechne initial Gauß-Filter für Glättung:
-            //for (int j = 0; j < filterLength; j++)
-            //{
-            //    //Gauss-Berechnung
-            //gaussFilter[j] = (1 / (Math.Sqrt(2 * Math.PI) * sigma)) * Math.Pow(Math.E, -(Math.Pow(j, 2) / (2 * Math.Pow(sigma, 2))));
-            //}
             foreach (double filterValue in gaussFilter)
                 gaussFactor += filterValue;
 
