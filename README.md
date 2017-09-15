@@ -16,6 +16,10 @@ https://www.youtube.com/watch?v=6NFsea7CoxQ
 Unfortunately I have currently no time to maintain this project. So if anybody who is interested to enhance the software (maybe maintain it for newer Kinect versions) is welcome.
 
 ## Usage ##
+
+If you want to use ExpressionMouse without Dev environment, just use the exe file within the "executable" folder.
+
+
 Cursor Moving
 
 It is really easy: Just move your head to control the cursor. Make sure that Kinect can see your face as well as your chest. Sometimes the inital recognition is better when you are waving. It is normal that Kinect needs a few seconds to identify your face correctly. In contrast to KinectMouse, ExpressionMouse Kinect is more precise when you are more close to the sensor (but not too close) as the sensor has a more detailed view on your face this way. One meter should be a sufficient distance.
