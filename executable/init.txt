@@ -1,0 +1,1 @@
+15.09.2017 18:01:05 - Error during Kinect initialization.

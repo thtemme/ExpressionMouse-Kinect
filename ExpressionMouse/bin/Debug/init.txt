@@ -8,3 +8,12 @@
 09.09.2017 12:53:53 - Kinect sensor initialized successfully.
 09.09.2017 12:58:46 - Kinect sensor initialized successfully.
 09.09.2017 12:59:38 - Kinect sensor initialized successfully.
+11.09.2017 22:29:50 - Kinect sensor initialized successfully.
+11.09.2017 22:31:22 - Kinect sensor initialized successfully.
+11.09.2017 22:33:18 - Kinect sensor initialized successfully.
+14.09.2017 21:52:41 - Kinect sensor initialized successfully.
+14.09.2017 22:06:48 - Kinect sensor initialized successfully.
+15.09.2017 14:24:15 - Kinect sensor initialized successfully.
+15.09.2017 14:37:40 - Kinect sensor initialized successfully.
+15.09.2017 14:49:46 - Kinect sensor initialized successfully.
+15.09.2017 17:58:38 - Error during Kinect initialization.
